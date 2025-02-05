@@ -8,25 +8,27 @@
  * Some useful links:
  * https://doc-tft-espi.readthedocs.io/  TFT_eSPI documentation
  * https://github.com/stm32duino/Arduino_Core_STM32/tree/main STM32 core for Arduino
+ * https://docs.arduino.cc/language-reference/keywords/ Arduino language reference
  *
  */
 
 #include <Arduino.h>
+#include "HardwareTimer.h"  // include the STM32 HardwareTimer library
 
 #include "adf4351.h"
 
-#include "Free_Fonts.h"
+
 #include <TFT_eSPI.h>
-#include <TFT_eWidget.h>
+//#include <TFT_eWidget.h>
 
 // Define IO pins
 #define LED_PIN PA4
 
+// Create hardware driver objects
 HardwareSerial Serial1(PA10, PA9);
-
 TFT_eSPI tft = TFT_eSPI();
-
 ADF4351  vfo(PB12, SPI_MODE0, 1000000UL , MSBFIRST) ;
+HardwareTimer timer(TIM2);
 
 // These are the pins used to interface between the 2046 touch controller and STM32
 #define TOUCH_DOUT PB4  /* Data out pin (T_DO) of touch screen */
@@ -39,30 +41,45 @@ ADF4351  vfo(PB12, SPI_MODE0, 1000000UL , MSBFIRST) ;
 #define HMAX 4095
 #define VMIN 0
 #define VMAX 4095
-#define XYSWAP 0 // 0 or 1
+#define XYSWAP 1 // 0 or 1
 
 // This is the screen size for the raw to coordinate transformation
 // width and height specified for landscape orientation
-#define HRES 320 /* Default screen resulution for X axis */
-#define VRES 240 /* Default screen resulution for Y axis */
+#define tftHRES 320 /* Default screen resulution for X axis */
+#define tftVRES 240 /* Default screen resulution for Y axis */
 
-#define BUTTON_W 100
-#define BUTTON_H 50
 
-// GUI objects
-ButtonWidget btnL = ButtonWidget(&tft);
-ButtonWidget btnR = ButtonWidget(&tft);
 
 #include <TFT_Touch.h>
 
-/* Create an instance of the touch screen library */
+// Create an instance of the touch screen library 
 TFT_Touch touch = TFT_Touch(TOUCH_CS, TOUCH_CLK, TOUCH_DIN, TOUCH_DOUT);
 
-// put function declarations here:
-//int myFunction(int, int);
+#include "tft_cal.h"
+
+#include "gui.h"
+TFT_gui *gui;
+
+
+#include <Vrekrer_scpi_parser.h>
+SCPI_Parser scpi;
+
+// Forward declarations
+void scpi_init();
 
 // put global variables here:
 uint32_t set_f=50000000;
+volatile uint32_t systemTick = 0;
+
+// Timer callback function
+void timerCallback() {
+  // This code will execute every 10ms
+  systemTick++;
+
+  if (systemTick % 50 == 0) {
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+  }
+}
 
 // put your setup code here, to run once:
 void setup() {
@@ -74,64 +91,20 @@ void setup() {
   Serial1.begin(115200);
   Serial1.println("VK2XMC ADF4351 Synthesizer V0.1");
 
-  // Initialize TFT
-  
-  tft.init();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_SKYBLUE);
-  tft.setTextColor(TFT_WHITE, TFT_SKYBLUE);
-  tft.setFreeFont(FM9);
+  // Do touch calibration
+  //TFT_cal tcal(tft, touch, Serial1, tftHRES, tftVRES);
+  //tcal.doTouchCalibration();
 
-  tft.setCursor(0, 10); // x,y
-  tft.println("VK2XMC ADF4351 Sig gen V0.1");
-  tft.println("Initializing...");
 
-  //tft.setTextFont(1);
-  //tft.println("Font 1");
-  //tft.setTextFont(2);
-  //tft.println("Font 2");
-  //tft.setTextFont(4);
-  //tft.println("Font 4");
-  //tft.setTextFont(6);
-  //tft.println("Font 6");
-
-  //tft.setTextFont(7);
-  //tft.setTextSize(1);
-  //tft.println("123.456");
-
-  //tft.setTextFont(8);
-  //tft.println("Font 8");
-
-  //tft.setFreeFont(FF2);
-  //tft.println("Font FF2");
-
-  //tft.setFreeFont(FF17);
-  //tft.println("Font FF17");
-
-/*
-  tft.setFreeFont(TT1);
-  tft.println("Font TT1");
-
-  tft.setFreeFont(FMB9);
-  tft.println("Font FMB9");
-
-  tft.setFreeFont(FSS9);
-  tft.println("Font FSS9");
-*/
-
-  tft.setFreeFont(FM9);
-
-  // Set up the GUI
-  uint16_t x = (tft.width() - BUTTON_W) / 2;
-  uint16_t y = tft.height() / 2 - BUTTON_H - 10;
-  btnL.initButtonUL(x, y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_RED, TFT_BLACK, "Button", 1);
-  //btnL.setPressAction(btnL_pressAction);
-  //btnL.setReleaseAction(btnL_releaseAction);
-  btnL.drawSmoothButton(false, 3, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
-
-  // Initialize Touch
-  touch.setCal(HMIN, HMAX, VMIN, VMAX, HRES, VRES, XYSWAP); // Raw xmin, xmax, ymin, ymax, width, height
+  // Set the calibration values for the touch screen
+  // These values are for the 3.5" TFT screen with the XPT2046 touch controller
+  // For now, you can regenrate these by uncommenting the 2 lines above
+  touch.setCal(3637, 691, 3323, 593, 320, 240, 1); // Raw xmin, xmax, ymin, ymax, width, height, XYswap
   touch.setRotation(1);
+
+  // Create an instance of the GUI
+  gui = new TFT_gui(tft, touch, Serial1);
+  gui->setupGui();
 
   // Initialize ADF4351
   vfo.pwrlevel = 0 ;      ///< sets to -4 dBm output
@@ -147,52 +120,131 @@ void setup() {
   // sets the reference frequency to 25 Mhz
   if ( vfo.setrf(25000000UL) ==  0 )
   {
-    tft.println("ref freq set to 25 MHz") ;
+    gui->updateStatus("ref freq set to 25 MHz", TFT_GREEN);
   } else {
-    tft.println("ref freq set error") ;
+    gui->updateStatus("ref freq set error", TFT_RED) ;
   }
 
-  //initialize the chip
+  //initialize the ADF4351 
   vfo.init() ;
   //enable frequency output
   vfo.enable() ;
 
   vfo.setf_only(set_f, 11, 1);
+
+  // Initialize Timer
+  timer.setOverflow(100, HERTZ_FORMAT); // 10ms
+  timer.attachInterrupt(timerCallback);
+  timer.resume();
+
+  // Initialize SCPI
+  scpi_init();
+
 }
 
+//bool ledState = false;
 // put your main code here, to run repeatedly:
 void loop() {
   
-  unsigned int X_Raw;
-  unsigned int Y_Raw;
+  static uint32_t scanTime = millis();
+  
 
-  digitalWrite(LED_PIN, HIGH);
-  delay(500);
-  digitalWrite(LED_PIN, LOW);
-  delay(500);
+  // Every 500ms 
+  //if (systemTick % 50 == 0) {
+  //  digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Toggle LED
+  //  Serial1.print("System Tick: "); Serial1.println(systemTick);
+  //}
 
-  Serial1.println("Test Serial1");
+  //digitalWrite(LED_PIN, HIGH);
+  //delay(500);
+  //digitalWrite(LED_PIN, LOW);
+  //delay(500);
 
-  vfo.setf_only(set_f, 11, 1);
+  //Serial1.println("Test Serial1");
 
-  if (touch.Pressed()) // Note this function updates coordinates stored within library variables
-  {
-    /* Read the current X and Y axis as raw co-ordinates at the last touch time*/
-    // The values returned were captured when Pressed() was called!
-    
-    X_Raw = touch.RawX();
-    Y_Raw = touch.RawY();
+  //vfo.setf_only(set_f, 11, 1);
 
-    /* Output the results to the serial port */
-    Serial1.print("Raw x,y = ");
-    Serial1.print(X_Raw);
-    Serial1.print(",");
-    Serial1.println(Y_Raw);
-    delay(10);
+  //if (millis() % 500 == 0){
+  //  digitalWrite(LED_PIN, ledState); // Toggle LED
+  //  ledState = !ledState;
+  //  Serial1.print("Led "); Serial1.println(scanTime);
+  //}
+
+  if (millis() - scanTime >= 50) {
+    scanTime = millis();
+
+    gui->doGui();
+
+    //gui->updateStatus(String("Tick: ") + String(scanTime, DEC));
+        
+  }
+
+  scpi.ProcessInput(Serial1, "\n");
+}
+
+void Identify(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  interface.println(F("VK2XMC,ADF4351 Sig Gen,#00," VREKRER_SCPI_VERSION));
+  //*IDN? Suggested return string should be in the following format:
+  // "<vendor>,<model>,<serial number>,<firmware>"
+}
+
+void scpiSetFrequency(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  if (parameters.Size() == 1) {
+    set_f = String(parameters[0]).toInt();
+    vfo.setf_only(set_f, 11, 1);
+    interface.println(F("OK"));
+  } else {
+    interface.println(F("ERROR"));
+  }
+  gui->updateStatus(String("Set Frequency: ") + String(set_f, DEC));
+}
+
+void scpiGetFrequency(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  if (parameters.Size() == 0) {
+    interface.println(set_f);
+  } else {
+    interface.println(F("ERROR"));
   }
 }
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+void scpiSetPower(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  if (parameters.Size() == 1) {
+    vfo.pwrlevel = String(parameters[0]).toInt();
+    vfo.R[4].setbf(3, 2, vfo.pwrlevel);            // Output power 0-3 (-4dBm to 5dBm, 3dB steps)
+    vfo.writeRegisters();
+    interface.println(F("OK"));
+  } else {
+    interface.println(F("ERROR"));
+  }
+}
+
+void scpiGetPower(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  if (parameters.Size() == 0) {
+    interface.println(vfo.pwrlevel);
+  } else {
+    interface.println(F("ERROR"));
+  }
+}
+
+void DoNothing(SCPI_C commands, SCPI_P parameters, Stream& interface) {
+  if (parameters.Size() == 0) {
+    //interface.println(F("OK"));
+  } else {
+    //interface.println(F("ERROR"));
+  }
+}
+
+void scpi_init()
+{
+    scpi.RegisterCommand(F("*IDN?"), &Identify);
+
+    scpi.SetCommandTreeBase(F("SOURce"));
+    scpi.RegisterCommand(F(":FREQuency"), &scpiSetFrequency);
+    scpi.RegisterCommand(F(":FREQuency?"), &scpiGetFrequency);
+    scpi.RegisterCommand(F(":CW"), &scpiSetFrequency);
+    scpi.RegisterCommand(F(":CW?"), &scpiSetFrequency);
+
+    scpi.RegisterCommand(F(":POWer"), &scpiSetPower);
+    scpi.RegisterCommand(F(":POWer?"), &scpiGetPower);
+
 }
