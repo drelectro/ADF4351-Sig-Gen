@@ -6,6 +6,7 @@
 #define R_BORDER 10
 
 extern void enableOutput(bool state);
+extern void setPowerLevel(uint8_t level);
 
 // The eWidget library doesn't support CPP callbacks so we need to use a global function and globals to store the button instances
 ButtonWidget* btnSetStartFreq;
@@ -112,7 +113,7 @@ void TFT_gui::setupGui()
   param.slotWidth = 9;           // Note: ends of slot will be rounded and anti-aliased
   param.slotLength = 150;        // Length includes rounded ends
   param.slotColor = TFT_BLUE;    // Slot colour
-  param.slotBgColor = TFT_BLACK; // Slot background colour for anti-aliasing
+  param.slotBgColor = TFT_SKYBLUE; // Slot background colour for anti-aliasing
   param.orientation = H_SLIDER;  // sets it "true" for horizontal
 
   // Slider control knob parameters (smooth rounded rectangle)
@@ -124,14 +125,15 @@ void TFT_gui::setupGui()
 
   // Slider range and movement speed
   param.sliderLT = 0;            // Left side for horizontal, top for vertical slider
-  param.sliderRB = 100;          // Right side for horizontal, bottom for vertical slider
-  param.startPosition = 50;      // Start position for control knob
+  param.sliderRB = 3;            // Right side for horizontal, bottom for vertical slider
+  param.startPosition = 3;       // Start position for control knob
   param.sliderDelay = 0;         // Microseconds per pixel movement delay (0 = no delay)
 
   // Create slider using parameters and plot at 0,0
   sliderKnob = new TFT_eSprite(&tft);
   pwrSlider = new SliderWidget(&tft, sliderKnob);
-  pwrSlider->drawSlider(20, 160, param);
+  pwrSlider->drawSlider(20, 165, param);
+  pwrSlider->setSliderPosition(0);
 
 }
 
@@ -165,6 +167,7 @@ void TFT_gui::doGui()
     }
     if (pwrSlider->checkTouch(t_x, t_y)) {
         Serial1.print("Slider 1 = "); Serial1.println(pwrSlider->getSliderPosition());
+        setPowerLevel(pwrSlider->getSliderPosition());
     }
 }
 

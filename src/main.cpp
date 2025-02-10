@@ -59,6 +59,7 @@ TFT_Touch touch = TFT_Touch(TOUCH_CS, TOUCH_CLK, TOUCH_DIN, TOUCH_DOUT);
 
 void enableOutput(bool enable);
 void setFrequency(uint32_t freq);
+void setPowerLevel(uint8_t level);
 #include "gui.h"
 TFT_gui *gui;
 
@@ -199,6 +200,12 @@ void enableOutput(bool enable) {
   }
 }
 
+void setPowerLevel(uint8_t level) {
+  vfo.pwrlevel = level;
+  vfo.R[4].setbf(3, 2, vfo.pwrlevel);            // Output power 0-3 (-4dBm to 5dBm, 3dB steps)
+  vfo.writeRegisters();
+}
+
 void Identify(SCPI_C commands, SCPI_P parameters, Stream& interface) {
   interface.println(F("VK2XMC,ADF4351 Sig Gen,#00," VREKRER_SCPI_VERSION));
   //*IDN? Suggested return string should be in the following format:
@@ -226,9 +233,7 @@ void scpiGetFrequency(SCPI_C commands, SCPI_P parameters, Stream& interface) {
 
 void scpiSetPower(SCPI_C commands, SCPI_P parameters, Stream& interface) {
   if (parameters.Size() == 1) {
-    vfo.pwrlevel = String(parameters[0]).toInt();
-    vfo.R[4].setbf(3, 2, vfo.pwrlevel);            // Output power 0-3 (-4dBm to 5dBm, 3dB steps)
-    vfo.writeRegisters();
+    setPowerLevel( String(parameters[0]).toInt());
     interface.println(F("OK"));
   } else {
     interface.println(F("ERROR"));
