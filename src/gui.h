@@ -21,6 +21,7 @@ class TFT_gui
         void doGui();
 
         void updateStatus(String status, uint32_t color = TFT_WHITE);
+        void updateStartFreq(uint32_t freq);
         
     private:
         TFT_eSPI &tft;
@@ -29,6 +30,8 @@ class TFT_gui
         
         std::vector<ButtonWidget*> buttons;
 
-        //void btnOnOffPress();
+        SliderWidget* pwrSlider;
+        TFT_eSprite* sliderKnob;
+
 
 };

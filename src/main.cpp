@@ -57,6 +57,8 @@ TFT_Touch touch = TFT_Touch(TOUCH_CS, TOUCH_CLK, TOUCH_DIN, TOUCH_DOUT);
 
 #include "tft_cal.h"
 
+void enableOutput(bool enable);
+void setFrequency(uint32_t freq);
 #include "gui.h"
 TFT_gui *gui;
 
@@ -130,7 +132,8 @@ void setup() {
   //enable frequency output
   vfo.enable() ;
 
-  vfo.setf_only(set_f, 11, 1);
+  //vfo.setf_only(set_f, 11, 1);
+  setFrequency(set_f);
 
   // Initialize Timer
   timer.setOverflow(100, HERTZ_FORMAT); // 10ms
@@ -182,6 +185,20 @@ void loop() {
   scpi.ProcessInput(Serial1, "\n");
 }
 
+void setFrequency(uint32_t freq) {
+  set_f = freq;
+  vfo.setf_only(freq, 11, 1);
+  gui->updateStartFreq(freq);
+}
+
+void enableOutput(bool enable) {
+  if (enable) {
+    vfo.enable();
+  } else {
+    vfo.disable();
+  }
+}
+
 void Identify(SCPI_C commands, SCPI_P parameters, Stream& interface) {
   interface.println(F("VK2XMC,ADF4351 Sig Gen,#00," VREKRER_SCPI_VERSION));
   //*IDN? Suggested return string should be in the following format:
@@ -190,8 +207,8 @@ void Identify(SCPI_C commands, SCPI_P parameters, Stream& interface) {
 
 void scpiSetFrequency(SCPI_C commands, SCPI_P parameters, Stream& interface) {
   if (parameters.Size() == 1) {
-    set_f = String(parameters[0]).toInt();
-    vfo.setf_only(set_f, 11, 1);
+    setFrequency(String(parameters[0]).toInt());
+
     interface.println(F("OK"));
   } else {
     interface.println(F("ERROR"));
